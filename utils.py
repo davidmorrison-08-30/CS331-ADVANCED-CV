@@ -4,7 +4,7 @@ from PIL import Image
 import io
 import pickle
 import numpy as np
-import cv2
+import cv2 as cv
 from ultralytics import YOLO
 import cv2
 import imutils
@@ -14,17 +14,12 @@ import requests
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from sklearn.model_selection import train_test_split
-from keras.models import Sequential
-from keras.applications.vgg16 import VGG16
-from keras.layers import Dense, InputLayer, Dropout
-from keras.applications.vgg16 import preprocess_input
 from ultralytics.utils.plotting import Annotator
 import time
 import random
-import openai
+# import openai
 from transformers import CLIPProcessor, CLIPModel
-import torch
+# import torch
 import faiss
 from transformers import AutoImageProcessor, Dinov2Model
 import re

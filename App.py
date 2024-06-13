@@ -2,13 +2,11 @@ import streamlit as st
 import os
 from PIL import Image
 import io
-# import pickle
 import numpy as np
-import cv2
 from utils import show_images, get_human, get_features_vector, yolo_draw_bounding_boxes, sort
 from ultralytics import YOLO
 from deepface import DeepFace
-import cv2
+import cv2 as cv
 import imutils
 import math
 import os
@@ -16,16 +14,10 @@ import requests
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from sklearn.model_selection import train_test_split
-from keras.models import Sequential
-from keras.applications.vgg16 import VGG16
-from keras.layers import Dense, InputLayer, Dropout
-from keras.applications.vgg16 import preprocess_input
 from ultralytics.utils.plotting import Annotator
 import time
 import random
-import openai
-# from transformers import CLIPProcessor, CLIPModel
+from ordered_set import OrderedSet
 import torch
 import faiss
 from transformers import AutoImageProcessor, Dinov2Model
@@ -63,9 +55,9 @@ elif (selected_option == 'Losing Ground'):
 elif (selected_option == 'Memphis'):
     film = 'Memphis'
 
-facenet_persons = pd.read_csv("../input/new-index/like_me-persons-facenet.csv")
-dino_persons = pd.read_csv("../input/new-index/like_me-persons-dino.csv")
-ground_truth = set(pd.read_excel("../input/ground-truth/ground_truth/like_me/Kiya.xlsx")["Full"])
+facenet_persons = pd.read_csv("./indices/like_me-persons-facenet.csv")
+dino_persons = pd.read_csv("./indices/like_me-persons-dino.csv")
+ground_truth = set(pd.read_excel("./ground_truth/like_me/Kiya.xlsx")["Full"])
 
 facenet_index = faiss.read_index("./indices/like_me-index-facenet.index")
 dino_index = faiss.read_index("./indices/like_me-index-dino.index")
@@ -79,8 +71,8 @@ top_res = st.slider('Choose the number of shots to be displayed', 1, 200, 1)
 st.write(f'Query images for {character} in {selected_option}')
 query_images = []
 for i in os.listdir(f'./query/{film}/{character}/'):
-    img = cv2.imread(f'./query/{film}/{character}/{i}')
-    img = cv2.resize(img, (100,100))
+    img = cv.imread(f'./query/{film}/{character}/{i}')
+    img = cv.resize(img, (100,100))
     query_images.append(img)
 if(query_images != []):
     checkboxes = show_images(query_images)
@@ -103,8 +95,7 @@ facenet_query_features = []
 dino_query_features = []
 
 for img in chose_images:
-    img = cv.imread(f"../input/movie-query/like_me/like_me/Kiya/{img_name}")
-    frame_persons = yolo_draw_bounding_boxes(img)
+    frame_persons = yolo_draw_bounding_boxes(img, session_state.model)
     if frame_persons != []: 
         for person in frame_persons:
             embedding = DeepFace.represent(person, model_name="Facenet", enforce_detection=False)
@@ -113,9 +104,9 @@ for img in chose_images:
             print(embedding.shape)
             facenet_query_features.append(embedding)
     else:
-        inputs = image_processor(img, return_tensors="pt")
+        inputs = session_state.image_processor(img, return_tensors="pt")
         with torch.no_grad():
-            embeddings = dino(**inputs).last_hidden_state
+            embeddings = session_state.dino(**inputs).last_hidden_state
             embeddings = embeddings.mean(axis=1)
             vectors = embeddings.detach().cpu().numpy()
             vectors = np.float32(vectors)
@@ -125,22 +116,27 @@ for img in chose_images:
                 tempt = np.reshape(i, (1, -1))
                 print(i.shape)
                 dino_query_features.append(i)
-    facenet_query_features = np.array(facenet_query_features)
+
+facenet_query_features = np.array(facenet_query_features)
+if len(facenet_query_features):
     facenet_query_features = facenet_query_features.astype("float32")
     # frame_features = np.reshape(facenet_frame_features, (frame_features.shape[0], frame_features.shape[1]*frame_features.shape[2]))
     faiss.normalize_L2(facenet_query_features)
-    dino_query_features = np.array(dino_query_features)
+
+dino_query_features = np.array(dino_query_features)
+if len(dino_query_features):
     dino_query_features = dino_query_features.astype("float32")
     # frame_features = np.reshape(facenet_frame_features, (frame_features.shape[0], frame_features.shape[1]*frame_features.shape[2]))
     faiss.normalize_L2(dino_query_features)
 
 
-    relevant_retrieved_shots_facenet = []
-    relevant_retrieved_shots_dino = []
-    retrieved_shots_facenet = OrderedSet()
-    retrieved_shots_dino = OrderedSet()
+relevant_retrieved_shots_facenet = []
+relevant_retrieved_shots_dino = []
+retrieved_shots_facenet = OrderedSet()
+retrieved_shots_dino = OrderedSet()
 
-    
+
+if len(facenet_query_features):
     D1, I1 = facenet_index.search(facenet_query_features, k)
     search_results_facenet = OrderedSet()
     for query in I1:
@@ -154,6 +150,7 @@ for img in chose_images:
     # relevant_retrieved_shots_facenet.append(retrieved_shots_facenet_at_k & ground_truth)
 
 
+if len(dino_query_features):
     D1, I1 = dino_index.search(dino_query_features, k)
     search_results_dino = OrderedSet()
     for query in I1:
@@ -166,22 +163,23 @@ for img in chose_images:
     # retrieved_shots_dino.append(retrieved_shots_dino_at_k)    
     # relevant_retrieved_shots_dino.append(retrieved_shots_dino_at_k & ground_truth)
 
-    retrieved_shots = retrieved_shots_dino
-    retrieved_shots.update(retrieved_shots_facenet)
-    print(retrieved_shots)
-    st.title('Results:')
-    if (len(retrieved_shots)<top_res):
-        top_res = len(retrieved_shots)
-    rows = top_res//5+1
+retrieved_shots = retrieved_shots_dino
+retrieved_shots.update(retrieved_shots_facenet)
+st.title('Results:')
+if (len(retrieved_shots)<top_res):
+    top_res = len(retrieved_shots)
+rows = top_res//5+1
+columns = st.columns(5)
+count = 0
+# print(count)
+for row in range(rows):
     columns = st.columns(5)
-    count = len(retrieved_shots)-1
-    for row in range(rows):
-        columns = st.columns(5)
-        for column in columns:
-            if(count==top_res):
-                break
-            tmp = retrieved_shots[count].split('-')
-            shot = int((tmp[2].split('_'))[1])
-            scene = int(tmp[1])
-            column.video(f'./shots/{film}/{film}-{scene}/{film}-{scene}-shot_{shot}.webm')
-            count-=1
+    for column in columns:
+        if(count==top_res):
+            break
+        tmp = retrieved_shots[count].split('-')
+        shot = int((tmp[2].split('_'))[1])
+        scene = int(tmp[1])
+        column.video(f"./shots/{film}/{film}-{scene}/{'-'.join(tmp)}.webm")
+        # column.video(f"./shots/{tmp}.webm")
+        count += 1
