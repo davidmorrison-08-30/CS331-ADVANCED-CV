@@ -22,6 +22,8 @@ import torch
 import faiss
 from transformers import AutoImageProcessor, Dinov2Model
 
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
+
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 model_name = "facebook/dinov2-small"
@@ -82,6 +84,8 @@ if(query_images != []):
 
 query_button = st.button("Run the query")
 
+chose_images = np.array([])
+
 if(query_button and choices):
 
     chose_images = []
@@ -93,93 +97,93 @@ if(query_button and choices):
 
 facenet_query_features = []
 dino_query_features = []
+if chose_images.shape[0] != 0:
+    for img in chose_images:
+        frame_persons = yolo_draw_bounding_boxes(img, session_state.model)
+        if frame_persons != []: 
+            for person in frame_persons:
+                embedding = DeepFace.represent(person, model_name="Facenet", enforce_detection=False)
+                # tempt = np.reshape(i, (1, -1))
+                embedding = np.array(embedding[0]["embedding"])
+                print(embedding.shape)
+                facenet_query_features.append(embedding)
+        else:
+            inputs = session_state.image_processor(img, return_tensors="pt")
+            with torch.no_grad():
+                embeddings = session_state.dino(**inputs).last_hidden_state
+                embeddings = embeddings.mean(axis=1)
+                vectors = embeddings.detach().cpu().numpy()
+                vectors = np.float32(vectors)
+                vectors = np.reshape(vectors, (1, -1))
+               # faiss.normalize_L2(vectors)
+                for i in vectors:
+                    tempt = np.reshape(i, (1, -1))
+                    print(i.shape)
+                    dino_query_features.append(i)
 
-for img in chose_images:
-    frame_persons = yolo_draw_bounding_boxes(img, session_state.model)
-    if frame_persons != []: 
-        for person in frame_persons:
-            embedding = DeepFace.represent(person, model_name="Facenet", enforce_detection=False)
-            # tempt = np.reshape(i, (1, -1))
-            embedding = np.array(embedding[0]["embedding"])
-            print(embedding.shape)
-            facenet_query_features.append(embedding)
-    else:
-        inputs = session_state.image_processor(img, return_tensors="pt")
-        with torch.no_grad():
-            embeddings = session_state.dino(**inputs).last_hidden_state
-            embeddings = embeddings.mean(axis=1)
-            vectors = embeddings.detach().cpu().numpy()
-            vectors = np.float32(vectors)
-            vectors = np.reshape(vectors, (1, -1))
-           # faiss.normalize_L2(vectors)
-            for i in vectors:
-                tempt = np.reshape(i, (1, -1))
-                print(i.shape)
-                dino_query_features.append(i)
+    facenet_query_features = np.array(facenet_query_features)
+    if len(facenet_query_features):
+        facenet_query_features = facenet_query_features.astype("float32")
+        # frame_features = np.reshape(facenet_frame_features, (frame_features.shape[0], frame_features.shape[1]*frame_features.shape[2]))
+        faiss.normalize_L2(facenet_query_features)
 
-facenet_query_features = np.array(facenet_query_features)
-if len(facenet_query_features):
-    facenet_query_features = facenet_query_features.astype("float32")
-    # frame_features = np.reshape(facenet_frame_features, (frame_features.shape[0], frame_features.shape[1]*frame_features.shape[2]))
-    faiss.normalize_L2(facenet_query_features)
-
-dino_query_features = np.array(dino_query_features)
-if len(dino_query_features):
-    dino_query_features = dino_query_features.astype("float32")
-    # frame_features = np.reshape(facenet_frame_features, (frame_features.shape[0], frame_features.shape[1]*frame_features.shape[2]))
-    faiss.normalize_L2(dino_query_features)
-
-
-relevant_retrieved_shots_facenet = []
-relevant_retrieved_shots_dino = []
-retrieved_shots_facenet = OrderedSet()
-retrieved_shots_dino = OrderedSet()
+    dino_query_features = np.array(dino_query_features)
+    if len(dino_query_features):
+        dino_query_features = dino_query_features.astype("float32")
+        # frame_features = np.reshape(facenet_frame_features, (frame_features.shape[0], frame_features.shape[1]*frame_features.shape[2]))
+        faiss.normalize_L2(dino_query_features)
 
 
-if len(facenet_query_features):
-    D1, I1 = facenet_index.search(facenet_query_features, k)
-    search_results_facenet = OrderedSet()
-    for query in I1:
-        query_set = OrderedSet(query)
-        search_results_facenet.update(query_set)
-    if -1 in search_results_facenet:
-        search_results_facenet.remove(-1)
-    for i in search_results_facenet:
-        retrieved_shots_facenet.add(facenet_persons["shot"][i])
-    # retrieved_shots_facenet.append(retrieved_shots_facenet_at_k)    
-    # relevant_retrieved_shots_facenet.append(retrieved_shots_facenet_at_k & ground_truth)
+    relevant_retrieved_shots_facenet = []
+    relevant_retrieved_shots_dino = []
+    retrieved_shots_facenet = OrderedSet()
+    retrieved_shots_dino = OrderedSet()
 
 
-if len(dino_query_features):
-    D1, I1 = dino_index.search(dino_query_features, k)
-    search_results_dino = OrderedSet()
-    for query in I1:
-        query_set = OrderedSet(query)
-        search_results_dino.update(query_set)
-    if -1 in search_results_dino:
-        search_results_dino.remove(-1)
-    for i in search_results_dino:
-        retrieved_shots_dino.add(dino_persons["shot"][i])
-    # retrieved_shots_dino.append(retrieved_shots_dino_at_k)    
-    # relevant_retrieved_shots_dino.append(retrieved_shots_dino_at_k & ground_truth)
+    if len(facenet_query_features):
+        D1, I1 = facenet_index.search(facenet_query_features, k)
+        search_results_facenet = OrderedSet()
+        for query in I1:
+            query_set = OrderedSet(query)
+            search_results_facenet.update(query_set)
+        if -1 in search_results_facenet:
+            search_results_facenet.remove(-1)
+        for i in search_results_facenet:
+            retrieved_shots_facenet.add(facenet_persons["shot"][i])
+        # retrieved_shots_facenet.append(retrieved_shots_facenet_at_k)    
+        # relevant_retrieved_shots_facenet.append(retrieved_shots_facenet_at_k & ground_truth)
 
-retrieved_shots = retrieved_shots_dino
-retrieved_shots.update(retrieved_shots_facenet)
-st.title('Results:')
-if (len(retrieved_shots)<top_res):
-    top_res = len(retrieved_shots)
-rows = top_res//5+1
-columns = st.columns(5)
-count = 0
-# print(count)
-for row in range(rows):
+
+    if len(dino_query_features):
+        D1, I1 = dino_index.search(dino_query_features, k)
+        search_results_dino = OrderedSet()
+        for query in I1:
+            query_set = OrderedSet(query)
+            search_results_dino.update(query_set)
+        if -1 in search_results_dino:
+            search_results_dino.remove(-1)
+        for i in search_results_dino:
+            retrieved_shots_dino.add(dino_persons["shot"][i])
+        # retrieved_shots_dino.append(retrieved_shots_dino_at_k)    
+        # relevant_retrieved_shots_dino.append(retrieved_shots_dino_at_k & ground_truth)
+
+    retrieved_shots = retrieved_shots_dino
+    retrieved_shots.update(retrieved_shots_facenet)
+    st.title('Results:')
+    if (len(retrieved_shots)<top_res):
+        top_res = len(retrieved_shots)
+    rows = top_res//5+1
     columns = st.columns(5)
-    for column in columns:
-        if(count==top_res):
-            break
-        tmp = retrieved_shots[count].split('-')
-        shot = int((tmp[2].split('_'))[1])
-        scene = int(tmp[1])
-        column.video(f"./shots/{film}/{film}-{scene}/{'-'.join(tmp)}.webm")
-        # column.video(f"./shots/{tmp}.webm")
-        count += 1
+    count = 0
+    # print(count)
+    for row in range(rows):
+        columns = st.columns(5)
+        for column in columns:
+            if(count==top_res):
+                break
+            tmp = retrieved_shots[count].split('-')
+            shot = int((tmp[2].split('_'))[1])
+            scene = int(tmp[1])
+            column.video(f"./shots/{film}/{film}-{scene}/{'-'.join(tmp)}.webm")
+            # column.video(f"./shots/{tmp}.webm")
+            count += 1
