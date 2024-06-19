@@ -88,7 +88,7 @@ def yolo_draw_bounding_boxes(image, yolo_model):
             c = box.cls
             person_img = image[left:right, top:bottom]
             label = yolo_model.names[int(c)]
-            if label == "person":
+            if label == "face":
                 # label = yolo_model.names[int(c)]
                 # print(coordinates)
                 lst_of_persons.append(person_img)
