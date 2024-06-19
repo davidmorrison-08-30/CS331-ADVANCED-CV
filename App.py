@@ -80,13 +80,13 @@ if(query_images != []):
     checkboxes = show_images(query_images)
     choices = st.multiselect('Choose query images:', checkboxes)
 
-# method = st.selectbox('Feature extraction method', ['CLIP', 'DINOv2'])
+face_model = st.selectbox("Facial feature extractor", ["Facenet", "VGG-Face"])
 
 query_button = st.button("Run the query")
 
 chose_images = np.array([])
 
-if(query_button and choices):
+if(query_button and choices and face_model):
 
     chose_images = []
     for choice in choices:
@@ -102,7 +102,7 @@ if chose_images.shape[0] != 0:
         frame_persons = yolo_draw_bounding_boxes(img, session_state.model)
         if frame_persons != []: 
             for person in frame_persons:
-                embedding = DeepFace.represent(person, model_name="Facenet", enforce_detection=False)
+                embedding = DeepFace.represent(person, model_name=face_model, enforce_detection=False)
                 # tempt = np.reshape(i, (1, -1))
                 embedding = np.array(embedding[0]["embedding"])
                 print(embedding.shape)
