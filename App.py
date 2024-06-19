@@ -80,7 +80,9 @@ if(query_images != []):
     checkboxes = show_images(query_images)
     choices = st.multiselect('Choose query images:', checkboxes)
 
-face_model = st.selectbox("Facial feature extractor", ["Facenet", "VGG-Face"])
+# face_model = st.selectbox("Facial feature extractor", ["Facenet", "VGG-Face"])
+
+face_model = "Facenet"
 
 query_button = st.button("Run the query")
 
@@ -100,7 +102,8 @@ if(query_button and choices and face_model):
     if chose_images.shape[0] != 0:
         for img in chose_images:
             frame_persons = yolo_draw_bounding_boxes(img, session_state.model)
-            if frame_persons != []: 
+            if frame_persons != []:
+                st.write('Faces Detected!!!')
                 for person in frame_persons:
                     embedding = DeepFace.represent(person, model_name=face_model, enforce_detection=False)
                     # tempt = np.reshape(i, (1, -1))
@@ -108,6 +111,7 @@ if(query_button and choices and face_model):
                     print(embedding.shape)
                     facenet_query_features.append(embedding)
             else:
+                st.write('No Face Detected!!!')
                 inputs = session_state.image_processor(img, return_tensors="pt")
                 with torch.no_grad():
                     embeddings = session_state.dino(**inputs).last_hidden_state
@@ -122,7 +126,7 @@ if(query_button and choices and face_model):
                         dino_query_features.append(i)
 
         facenet_query_features = np.array(facenet_query_features)
-        if len(facenet_query_features):
+        if facenet_query_features.shape[0] != 0:
             facenet_query_features = facenet_query_features.astype("float32")
             # frame_features = np.reshape(facenet_frame_features, (frame_features.shape[0], frame_features.shape[1]*frame_features.shape[2]))
             faiss.normalize_L2(facenet_query_features)
